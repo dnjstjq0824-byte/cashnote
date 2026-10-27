@@ -1,0 +1,28 @@
+{
+  "brand": {
+    "primary": "#0F172A",
+    "primaryHover": "#1E293B",
+    "accent": "#059669",
+    "accentHover": "#047857"
+  },
+  "finance": {
+    "authorized": "#2563EB",
+    "scheduled": "#0D9488",
+    "warning": "#D97706",
+    "danger": "#DC2626",
+    "expense": "#475569"
+  },
+  "provenance": {
+    "level1": "#64748B",
+    "level2": "#3B82F6",
+    "level3": "#8B5CF6",
+    "level4": "#059669"
+  },
+  "neutral": {
+    "background": "#F8FAFC",
+    "surface": "#FFFFFF",
+    "border": "#E2E8F0",
+    "text": "#0F172A",
+    "textMuted": "#64748B"
+  }
+}

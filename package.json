@@ -1,0 +1,11 @@
+{
+    "private":  true,
+    "name":  "bn-merchant-os-monorepo",
+    "version":  "1.0.0",
+    "scripts":  {
+                    "dev:api":  "go run ./cmd/api-server",
+                    "lint:go":  "go vet ./...",
+                    "dev:worker":  "go run ./cmd/connector-worker",
+                    "test:go":  "go test -v -race ./internal/..."
+                }
+}

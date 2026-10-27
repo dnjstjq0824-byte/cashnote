@@ -1,0 +1,8 @@
+{
+  "name": "@bn/ui-design-system",
+  "version": "1.0.0",
+  "description": "BN Merchant OS Argon Slate & Trust Emerald Design System",
+  "main": "index.js",
+  "keywords": ["merchant-os", "design-system", "vue3", "tailwind"],
+  "license": "Proprietary"
+}
