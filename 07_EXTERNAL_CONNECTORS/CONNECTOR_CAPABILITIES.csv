@@ -1,0 +1,11 @@
+provider_code,category,display_name,access_status,level_1_manual,level_2_file_import,level_3_official_api,level_4_auto_recon,live_default_enabled,required_contract_or_license,supported_file_formats
+NTS_BIZ_STATUS,NTS_PUBLIC,국세청 사업자등록 진위확인·상태조회,PUBLIC_API,true,true,true,false,true,공공데이터포털 오픈API 활용승인 (15081808),"JSON, PDF/Image(OCR)"
+CREFIA_CARDSALES,CARD_ASSOCIATION,여신금융협회 가맹점 매출거래정보(매통조),CONTRACT_REQUIRED,true,true,true,true,false,여신금융협회 매통조 OpenAPI 이용협약 또는 적법 중계사 계약,"XLSX, XLS, CSV"
+CARD_9_ISSUERS,CARD_ISSUER,국내 9대 카드사 (신한/국민/삼성/현대/롯데/우리/하나/BC/농협),PARTNER_ONLY,true,true,true,true,false,카드사 가맹점 EDI/VAN 중계 계약,"XLSX, XLS, CSV"
+KFTC_OPENBANKING,OPEN_BANKING,금융결제원 오픈뱅킹 공동업무 (잔액·거래내역·1원인증),APPROVAL_REQUIRED,true,true,true,true,false,금융결제원 오픈뱅킹 이용적합성 승인 및 보안점검 통과,"XLSX, CSV (전 은행 통장내역)"
+POPBILL_BAROBILL_TAX,HOMETAX_ASP,공인 전자세금계산서·현금영수증 ASP (팝빌/바로빌),COMMERCIAL_PROVIDER,true,true,true,true,false,표준인증 시스템사업자(ASP) B2B 이용계약,"XLSX, XLS, XML"
+PG_TOSS_PAYMENTS,PG,토스페이먼츠 상점 정산·거래 Open API,CONTRACT_REQUIRED,true,true,true,true,false,가맹점 PG 계약 및 상점 Secret Key 위임,"CSV, XLSX, JSON Webhook"
+POS_UNIVERSAL_WEBHOOK,POS,제휴 POS·키오스크·테이블오더 표준 어댑터,PARTNER_ONLY,true,true,true,true,false,개별 POS 벤더 기술 제휴 및 가맹점 연동 동의,"CSV, XLSX, JSON Webhook"
+DELIVERY_3_APPS,DELIVERY_PLATFORM,배달 플랫폼 (배달의민족·쿠팡이츠·요기요),PARTNER_ONLY,true,true,false,true,false,공식 제휴 전 실시간 API BLOCKED (정산 명세서 파일 업로드 기본 지원),"XLSX, XLS, CSV"
+GOOGLE_BUSINESS_REVIEWS,REVIEW_PLATFORM,Google Business Profile 매장 리뷰 API,APPROVAL_REQUIRED,true,true,true,false,false,Google Business Profile API OAuth 승인,"CSV, JSON"
+KAKAO_ALIMTALK,MESSAGING,카카오 비즈메시지 알림톡·SMS Fallback,COMMERCIAL_PROVIDER,false,false,true,false,false,공식 비즈메시지 딜러사 계약 및 알림톡 템플릿 검수 승인,N/A
