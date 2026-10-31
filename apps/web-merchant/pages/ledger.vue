@@ -317,3 +317,4 @@ function submitManualEntry() {
   showManualModal.value = false;
 }
 </script>
+

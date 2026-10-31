@@ -237,3 +237,4 @@ function saveVendor() {
   newVendor.value = { trade_name: '', business_number: '', representative: '', category: '', phone: '' };
 }
 </script>
+
