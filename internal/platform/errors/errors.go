@@ -133,3 +133,4 @@ func NewInternal(err error) *AppError {
 		Err:        err,
 	}
 }
+

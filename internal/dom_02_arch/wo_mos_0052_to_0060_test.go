@@ -119,3 +119,4 @@ func TestWO_MOS_0060_RFC9457ErrorMapping(t *testing.T) {
 		}
 	})
 }
+

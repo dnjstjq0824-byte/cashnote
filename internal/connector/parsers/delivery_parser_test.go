@@ -47,3 +47,4 @@ func TestDeliverySettlementParser(t *testing.T) {
 		t.Errorf("expected net settled %s, got %s", expectedNet2, r2.NetSettledAmount)
 	}
 }
+

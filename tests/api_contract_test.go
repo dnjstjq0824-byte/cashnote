@@ -9,249 +9,346 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
-	"merchant-os/internal/business"
-	"merchant-os/internal/connector/parsers"
-	"merchant-os/internal/dom_02_arch"
-	"merchant-os/internal/identity"
-	"merchant-os/internal/ledger"
 	"merchant-os/internal/platform/envelope"
-	apperr "merchant-os/internal/platform/errors"
-	"merchant-os/internal/platform/middleware"
-	"merchant-os/internal/store"
+	"merchant-os/internal/platform/server"
 )
 
-func setupTestRouter() http.Handler {
-	r := chi.NewRouter()
-	r.Use(middleware.RequestIDMiddleware)
-	r.Use(middleware.TenantContextMiddleware)
-	r.Use(middleware.IdempotencyMiddleware)
-	r.Use(middleware.Recoverer)
+func TestMasterAPIContractSuite(t *testing.T) {
+	handler := server.NewRouter()
 
-	archRepo := dom_02_arch.NewMemoryRepository()
-	archSvc := dom_02_arch.NewService(archRepo)
-	idSvc := identity.NewService()
-	bizSvc := business.NewService()
-	storeSvc := store.NewService()
-	ledgerSvc := ledger.NewService()
+	// Global variables carried forward across user journey
+	var userID uuid.UUID
+	var businessID uuid.UUID
+	var storeID uuid.UUID
 
-	r.Route("/v1", func(api chi.Router) {
-		api.Get("/health/live", dom_02_arch.HandleLiveCheck(archSvc))
-		api.Get("/health/ready", dom_02_arch.HandleReadyCheck(archSvc))
-		api.Get("/system/capabilities", dom_02_arch.HandleListCapabilities(archSvc))
-
-		api.Post("/auth/register", func(w http.ResponseWriter, r *http.Request) {
-			var req struct {
-				Email    string `json:"email"`
-				Password string `json:"password"`
-				FullName string `json:"full_name"`
-			}
-			_ = json.NewDecoder(r.Body).Decode(&req)
-			user, err := idSvc.Register(r.Context(), req.Email, req.Password, req.FullName)
-			if err != nil {
-				if appErr, ok := err.(*apperr.AppError); ok {
-					envelope.WriteError(w, r, appErr.HTTPStatus, appErr.ToProblemDetails(r.URL.Path))
-					return
-				}
-				envelope.WriteError(w, r, http.StatusInternalServerError, apperr.NewInternal(err).ToProblemDetails(r.URL.Path))
-				return
-			}
-			envelope.WriteJSON(w, r, http.StatusCreated, user, nil, nil)
-		})
-
-		api.Post("/auth/login", func(w http.ResponseWriter, r *http.Request) {
-			var req struct {
-				Email    string `json:"email"`
-				Password string `json:"password"`
-			}
-			_ = json.NewDecoder(r.Body).Decode(&req)
-			user, token, err := idSvc.Login(r.Context(), req.Email, req.Password)
-			if err != nil {
-				envelope.WriteError(w, r, http.StatusUnauthorized, apperr.NewUnauthorized("로그인 실패").ToProblemDetails(r.URL.Path))
-				return
-			}
-			envelope.WriteJSON(w, r, http.StatusOK, map[string]any{"user": user, "token": token}, nil, nil)
-		})
-
-		api.Post("/businesses", func(w http.ResponseWriter, r *http.Request) {
-			var req struct {
-				OwnerUserID        uuid.UUID `json:"owner_user_id"`
-				RegistrationNumber string    `json:"registration_number"`
-				CompanyName        string    `json:"company_name"`
-				RepresentativeName string    `json:"representative_name"`
-				OpeningDate        string    `json:"opening_date"`
-			}
-			_ = json.NewDecoder(r.Body).Decode(&req)
-			biz, err := bizSvc.RegisterBusiness(r.Context(), req.OwnerUserID, req.RegistrationNumber, req.CompanyName, req.RepresentativeName, req.OpeningDate)
-			if err != nil {
-				if appErr, ok := err.(*apperr.AppError); ok {
-					envelope.WriteError(w, r, appErr.HTTPStatus, appErr.ToProblemDetails(r.URL.Path))
-					return
-				}
-				envelope.WriteError(w, r, http.StatusInternalServerError, apperr.NewInternal(err).ToProblemDetails(r.URL.Path))
-				return
-			}
-			envelope.WriteJSON(w, r, http.StatusCreated, biz, nil, nil)
-		})
-
-		api.Post("/businesses/{businessId}/verify-ownership", func(w http.ResponseWriter, r *http.Request) {
-			bizID, _ := uuid.Parse(chi.URLParam(r, "businessId"))
-			var req struct {
-				AuthCode string `json:"auth_code"`
-			}
-			_ = json.NewDecoder(r.Body).Decode(&req)
-			ok, err := bizSvc.VerifyOwnership1Won(r.Context(), bizID, "004", "110-123", req.AuthCode)
-			if err != nil {
-				envelope.WriteError(w, r, http.StatusBadRequest, apperr.NewBadRequest("인증 실패").ToProblemDetails(r.URL.Path))
-				return
-			}
-			envelope.WriteJSON(w, r, http.StatusOK, map[string]any{"verified": ok}, nil, nil)
-		})
-
-		api.Post("/stores", func(w http.ResponseWriter, r *http.Request) {
-			var req struct {
-				BusinessID  uuid.UUID `json:"business_id"`
-				OwnerUserID uuid.UUID `json:"owner_user_id"`
-				StoreName   string    `json:"store_name"`
-				Category    string    `json:"category"`
-				Address     string    `json:"address"`
-			}
-			_ = json.NewDecoder(r.Body).Decode(&req)
-			st, err := storeSvc.CreateStore(r.Context(), req.BusinessID, req.OwnerUserID, req.StoreName, req.Category, req.Address)
-			if err != nil {
-				envelope.WriteError(w, r, http.StatusBadRequest, apperr.NewBadRequest(err.Error()).ToProblemDetails(r.URL.Path))
-				return
-			}
-			envelope.WriteJSON(w, r, http.StatusCreated, st, nil, nil)
-		})
-
-		api.Route("/stores/{storeId}", func(storeRouter chi.Router) {
-			storeRouter.Post("/delivery/settlements/parse-csv", func(w http.ResponseWriter, r *http.Request) {
-				storeID, _ := uuid.Parse(chi.URLParam(r, "storeId"))
-				records, err := parsers.ParseDeliverySettlementCSV(storeID, parsers.PlatformBaemin, r.Body)
-				if err != nil {
-					envelope.WriteError(w, r, http.StatusBadRequest, apperr.NewBadRequest(err.Error()).ToProblemDetails(r.URL.Path))
-					return
-				}
-				envelope.WriteJSON(w, r, http.StatusOK, records, &envelope.Meta{TotalCount: int64(len(records))}, nil)
-			})
-
-			storeRouter.Get("/analytics/pnl", func(w http.ResponseWriter, r *http.Request) {
-				storeID, _ := uuid.Parse(chi.URLParam(r, "storeId"))
-				now := time.Now()
-				pnl, _ := ledgerSvc.CalculatePnL(r.Context(), storeID, now.AddDate(0, -1, 0), now)
-				envelope.WriteJSON(w, r, http.StatusOK, pnl, nil, nil)
-			})
-		})
-	})
-
-	return r
-}
-
-func TestE2E_APIContract(t *testing.T) {
-	router := setupTestRouter()
-
-	t.Run("Health and Capabilities endpoints", func(t *testing.T) {
+	t.Run("01. Health & Capabilities", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/v1/health/live", nil)
 		rec := httptest.NewRecorder()
-		router.ServeHTTP(rec, req)
-
+		handler.ServeHTTP(rec, req)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("expected 200, got %d", rec.Code)
 		}
 
-		var resp envelope.Response
-		_ = json.Unmarshal(rec.Body.Bytes(), &resp)
-		if resp.RequestID == "" {
-			t.Errorf("expected non-empty request_id")
+		req = httptest.NewRequest(http.MethodGet, "/v1/system/capabilities", nil)
+		rec = httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d", rec.Code)
+		}
+
+		req = httptest.NewRequest(http.MethodGet, "/v1/system/monorepo", nil)
+		rec = httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d", rec.Code)
 		}
 	})
 
-	t.Run("User Onboarding and Store Lifecycle Flow", func(t *testing.T) {
-		// 1. Register
-		regBody := []byte(`{"email":"merchant@bn.internal","password":"SecurePassword123!","full_name":"김대표"}`)
-		req := httptest.NewRequest(http.MethodPost, "/v1/auth/register", bytes.NewReader(regBody))
+	t.Run("02. User Authentication & Profile", func(t *testing.T) {
+		// Register
+		regJSON := `{"email":"ceo@cafe-bn.internal","password":"SecurePassword123!","full_name":"김대표"}`
+		req := httptest.NewRequest(http.MethodPost, "/v1/auth/register", bytes.NewReader([]byte(regJSON)))
 		rec := httptest.NewRecorder()
-		router.ServeHTTP(rec, req)
-
+		handler.ServeHTTP(rec, req)
 		if rec.Code != http.StatusCreated {
-			t.Fatalf("registration failed: %d body: %s", rec.Code, rec.Body.String())
+			t.Fatalf("register failed: %d, body: %s", rec.Code, rec.Body.String())
 		}
 
 		var regResp envelope.Response
 		_ = json.Unmarshal(rec.Body.Bytes(), &regResp)
 		dataMap := regResp.Data.(map[string]any)
-		userID := uuid.MustParse(dataMap["id"].(string))
+		userID = uuid.MustParse(dataMap["id"].(string))
 
-		// 2. Login
-		loginBody := []byte(`{"email":"merchant@bn.internal","password":"SecurePassword123!"}`)
-		req = httptest.NewRequest(http.MethodPost, "/v1/auth/login", bytes.NewReader(loginBody))
+		// Login
+		loginJSON := `{"email":"ceo@cafe-bn.internal","password":"SecurePassword123!"}`
+		req = httptest.NewRequest(http.MethodPost, "/v1/auth/login", bytes.NewReader([]byte(loginJSON)))
 		rec = httptest.NewRecorder()
-		router.ServeHTTP(rec, req)
-
+		handler.ServeHTTP(rec, req)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("login failed: %d", rec.Code)
 		}
 
-		// 3. Register Business
-		bizJSON := fmt.Sprintf(`{"owner_user_id":"%s","registration_number":"123-45-67890","company_name":"BN카페","representative_name":"김대표","opening_date":"20240101"}`, userID)
-		req = httptest.NewRequest(http.MethodPost, "/v1/businesses", bytes.NewReader([]byte(bizJSON)))
+		// User Profile Me
+		req = httptest.NewRequest(http.MethodGet, "/v1/users/me", nil)
 		rec = httptest.NewRecorder()
-		router.ServeHTTP(rec, req)
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("get me failed: %d", rec.Code)
+		}
 
+		// Consent Revoke
+		req = httptest.NewRequest(http.MethodPost, fmt.Sprintf("/v1/users/me/consents/%s/revoke", uuid.NewString()), nil)
+		rec = httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("consent revoke failed: %d", rec.Code)
+		}
+	})
+
+	t.Run("03. Business Registration & 1-Won Verification", func(t *testing.T) {
+		bizJSON := fmt.Sprintf(`{"owner_user_id":"%s","registration_number":"123-45-67890","company_name":"BN카페 강남본점","representative_name":"김대표","opening_date":"20240101"}`, userID)
+		req := httptest.NewRequest(http.MethodPost, "/v1/businesses", bytes.NewReader([]byte(bizJSON)))
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
 		if rec.Code != http.StatusCreated {
-			t.Fatalf("business registration failed: %d body: %s", rec.Code, rec.Body.String())
+			t.Fatalf("business reg failed: %d, body: %s", rec.Code, rec.Body.String())
 		}
 
 		var bizResp envelope.Response
 		_ = json.Unmarshal(rec.Body.Bytes(), &bizResp)
 		bizMap := bizResp.Data.(map[string]any)
-		bizID := uuid.MustParse(bizMap["id"].(string))
+		businessID = uuid.MustParse(bizMap["id"].(string))
 
-		// 4. Verify Ownership via 1-Won Auth Code
-		verifyJSON := `{"auth_code":"7788"}`
-		req = httptest.NewRequest(http.MethodPost, fmt.Sprintf("/v1/businesses/%s/verify-ownership", bizID), bytes.NewReader([]byte(verifyJSON)))
+		// 1-won verification
+		verifyJSON := `{"bank_code":"004","account_number":"110-123","auth_code":"7788"}`
+		req = httptest.NewRequest(http.MethodPost, fmt.Sprintf("/v1/businesses/%s/verify-ownership", businessID), bytes.NewReader([]byte(verifyJSON)))
 		rec = httptest.NewRecorder()
-		router.ServeHTTP(rec, req)
-
+		handler.ServeHTTP(rec, req)
 		if rec.Code != http.StatusOK {
-			t.Fatalf("1-won verification failed: %d body: %s", rec.Code, rec.Body.String())
+			t.Fatalf("verify ownership failed: %d", rec.Code)
 		}
+	})
 
-		// 5. Create Store
-		storeJSON := fmt.Sprintf(`{"business_id":"%s","owner_user_id":"%s","store_name":"BN카페 역삼점","category":"카페","address":"서울 강남구 역삼동 10"}`, bizID, userID)
-		req = httptest.NewRequest(http.MethodPost, "/v1/stores", bytes.NewReader([]byte(storeJSON)))
-		rec = httptest.NewRecorder()
-		router.ServeHTTP(rec, req)
-
+	t.Run("04. Store Creation & Store Members", func(t *testing.T) {
+		storeJSON := fmt.Sprintf(`{"business_id":"%s","owner_user_id":"%s","store_name":"BN카페 역삼역점","category":"카페","address":"서울 강남구 테헤란로 152"}`, businessID, userID)
+		req := httptest.NewRequest(http.MethodPost, "/v1/stores", bytes.NewReader([]byte(storeJSON)))
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
 		if rec.Code != http.StatusCreated {
-			t.Fatalf("store creation failed: %d body: %s", rec.Code, rec.Body.String())
+			t.Fatalf("store create failed: %d, body: %s", rec.Code, rec.Body.String())
 		}
 
 		var storeResp envelope.Response
 		_ = json.Unmarshal(rec.Body.Bytes(), &storeResp)
 		stMap := storeResp.Data.(map[string]any)
-		storeID := uuid.MustParse(stMap["id"].(string))
+		storeID = uuid.MustParse(stMap["id"].(string))
 
-		// 6. Level 2 Delivery File Upload Parsing
-		csvData := "정산일자,주문금액,취소금액,중개이용료,배달대행료,결제수수료,할인쿠폰,광고비,수수료부가세\n2026-10-28,200000,0,13600,18000,6000,0,10000,4760\n"
-		req = httptest.NewRequest(http.MethodPost, fmt.Sprintf("/v1/stores/%s/delivery/settlements/parse-csv", storeID), bytes.NewReader([]byte(csvData)))
+		// List members
+		req = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/v1/stores/%s/members", storeID), nil)
 		rec = httptest.NewRecorder()
-		router.ServeHTTP(rec, req)
-
+		handler.ServeHTTP(rec, req)
 		if rec.Code != http.StatusOK {
-			t.Fatalf("delivery CSV parse failed: %d body: %s", rec.Code, rec.Body.String())
+			t.Fatalf("list store members failed: %d", rec.Code)
+		}
+	})
+
+	t.Run("05. Card Sales Summary & Settlements Payout Schedules", func(t *testing.T) {
+		// Summary
+		req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/v1/stores/%s/card-sales/summary", storeID), nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("card sales summary failed: %d", rec.Code)
 		}
 
-		// 7. Store P&L Check
-		req = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/v1/stores/%s/analytics/pnl", storeID), nil)
+		// Schedules
+		req = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/v1/stores/%s/settlements/schedules", storeID), nil)
 		rec = httptest.NewRecorder()
-		router.ServeHTTP(rec, req)
-
+		handler.ServeHTTP(rec, req)
 		if rec.Code != http.StatusOK {
-			t.Fatalf("pnl query failed: %d body: %s", rec.Code, rec.Body.String())
+			t.Fatalf("payout schedules failed: %d", rec.Code)
+		}
+	})
+
+	t.Run("06. Bank Deposits, Automated Reconciliation & Disputes", func(t *testing.T) {
+		// Bank deposits query
+		req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/v1/stores/%s/bank-deposits", storeID), nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("bank deposits query failed: %d", rec.Code)
+		}
+
+		// Reconciliation diagnostics (Level 4)
+		req = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/v1/stores/%s/reconciliation/diagnostics", storeID), nil)
+		rec = httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("reconciliation diagnostics failed: %d", rec.Code)
+		}
+
+		// Dispute creation
+		disputeJSON := fmt.Sprintf(`{"schedule_id":"%s","partner_code":"CARD_SHINHAN","dispute_type":"UNPAID_DEFAULT","claimed_amount":"150000","evidence_memo":"미입금 소명 요청"}`, uuid.NewString())
+		req = httptest.NewRequest(http.MethodPost, fmt.Sprintf("/v1/stores/%s/reconciliation/disputes", storeID), bytes.NewReader([]byte(disputeJSON)))
+		rec = httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("reconciliation dispute failed: %d", rec.Code)
+		}
+	})
+
+	t.Run("07. Expenses Management", func(t *testing.T) {
+		// Create expense
+		expJSON := `{"category_code":"FIXED_RENT","vendor_name":"역삼빌딩","supply_amount":"3000000","vat_amount":"300000","payment_method":"BANK_TRANSFER","proof_type":"TAX_INVOICE","memo":"10월 임차료"}`
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/v1/stores/%s/expenses", storeID), bytes.NewReader([]byte(expJSON)))
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("create expense failed: %d, body: %s", rec.Code, rec.Body.String())
+		}
+
+		// List expenses
+		req = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/v1/stores/%s/expenses", storeID), nil)
+		rec = httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("list expenses failed: %d", rec.Code)
+		}
+	})
+
+	t.Run("08. POS Event Ingestion & Automatic Journal Posting", func(t *testing.T) {
+		posJSON := `{"event_id":"pos-evt-101","pos_vendor":"PAYHERE","event_type":"ORDER_PAID","pos_order_number":"ORD-101","order_time":"2026-10-31T12:00:00Z","payments":[{"method":"CARD","amount":"55000"}],"total_amount":"55000"}`
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/v1/stores/%s/connectors/pos/events", storeID), bytes.NewReader([]byte(posJSON)))
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("pos event ingestion failed: %d, body: %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("09. Level 2 Delivery File Upload & Parsing", func(t *testing.T) {
+		csvData := "정산일자,주문금액,취소금액,중개이용료,배달대행료,결제수수료,할인쿠폰,광고비,수수료부가세\n2026-10-31,250000,0,17000,22500,7500,2000,10000,5900\n"
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/v1/stores/%s/imports/upload?file_type=DELIVERY_BAEMIN", storeID), bytes.NewReader([]byte(csvData)))
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("imports upload failed: %d, body: %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("10. Analytics P&L & Tax VAT Estimation", func(t *testing.T) {
+		// P&L
+		req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/v1/stores/%s/analytics/pnl", storeID), nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("analytics pnl failed: %d", rec.Code)
+		}
+
+		// VAT estimate
+		req = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/v1/stores/%s/tax/vat-estimate?year=2026&term=2_FINAL", storeID), nil)
+		rec = httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("vat estimate failed: %d", rec.Code)
+		}
+	})
+
+	t.Run("11. Reviews & CRM Campaigns", func(t *testing.T) {
+		// List reviews
+		req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/v1/stores/%s/reviews", storeID), nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("list reviews failed: %d", rec.Code)
+		}
+
+		// CRM Daytime campaign
+		crmJSON := `{"campaign_name":"주말 브런치 쿠폰","target_cohort":"ALL","message_template":"주말 브런치 10% 할인 쿠폰","recipients_count":50}`
+		req = httptest.NewRequest(http.MethodPost, fmt.Sprintf("/v1/stores/%s/crm/campaigns", storeID), bytes.NewReader([]byte(crmJSON)))
+		rec = httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		// Check either success or night time rejection depending on current KST
+		loc := time.FixedZone("KST", 9*60*60)
+		nowKST := time.Now().In(loc)
+		if nowKST.Hour() >= 21 || nowKST.Hour() < 8 {
+			if rec.Code != http.StatusBadRequest {
+				t.Errorf("expected 400 rejection during night-time hours, got %d", rec.Code)
+			}
+		} else {
+			if rec.Code != http.StatusCreated {
+				t.Errorf("expected 201 during daytime, got %d body: %s", rec.Code, rec.Body.String())
+			}
+		}
+	})
+
+	t.Run("12. AI Forecasts with Data Sufficiency", func(t *testing.T) {
+		// Sufficient data
+		req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/v1/stores/%s/ai/forecasts?historical_days=30", storeID), nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("ai forecasts failed: %d, body: %s", rec.Code, rec.Body.String())
+		}
+
+		// Insufficient data (<14 days)
+		req = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/v1/stores/%s/ai/forecasts?historical_days=7", storeID), nil)
+		rec = httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("expected 422 for insufficient data, got %d", rec.Code)
+		}
+	})
+
+	t.Run("13. Subscriptions & B2B Marketplace Orders", func(t *testing.T) {
+		// Plus tier subscription
+		subJSON := `{"tier":"PLUS"}`
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/v1/stores/%s/subscriptions", storeID), bytes.NewReader([]byte(subJSON)))
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("subscription failed: %d", rec.Code)
+		}
+
+		// Marketplace Order
+		orderJSON := `{"supplier_name":"CJ프레시웨이","payment_method":"PREPAID","items":[{"item_name":"우유 1L 10팩","quantity":2,"unit_price":"25000"}]}`
+		req = httptest.NewRequest(http.MethodPost, fmt.Sprintf("/v1/stores/%s/marketplace/orders", storeID), bytes.NewReader([]byte(orderJSON)))
+		rec = httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("marketplace order failed: %d, body: %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("14. Community Posts & Notifications", func(t *testing.T) {
+		postJSON := fmt.Sprintf(`{"author_user_id":"%s","store_name":"강남 카페 사장님","category":"BUSINESS_KNOWHOW","title":"배달 포장비 절감 노하우","content":"벌크 구매 추천드립니다."}`, userID)
+		req := httptest.NewRequest(http.MethodPost, "/v1/community/posts", bytes.NewReader([]byte(postJSON)))
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("create post failed: %d", rec.Code)
+		}
+
+		req = httptest.NewRequest(http.MethodGet, "/v1/community/posts", nil)
+		rec = httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("list posts failed: %d", rec.Code)
+		}
+
+		req = httptest.NewRequest(http.MethodGet, "/v1/notifications", nil)
+		rec = httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("notifications failed: %d", rec.Code)
+		}
+	})
+
+	t.Run("15. Admin 4-Eyes Decisions & System Cryptographic Integrity", func(t *testing.T) {
+		adminJSON := fmt.Sprintf(`{"decision":"APPROVED","admin_user_id":"%s"}`, uuid.NewString())
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/v1/admin/business-verifications/%s/decide", uuid.NewString()), bytes.NewReader([]byte(adminJSON)))
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("admin decision failed: %d", rec.Code)
+		}
+
+		req = httptest.NewRequest(http.MethodGet, "/v1/admin/audit/integrity-verify", nil)
+		rec = httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("audit integrity verify failed: %d", rec.Code)
+		}
+	})
+
+	t.Run("16. Partner Inbound Webhook", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/v1/partner/webhooks/TOSSPAYMENTS", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("partner webhook failed: %d", rec.Code)
 		}
 	})
 }

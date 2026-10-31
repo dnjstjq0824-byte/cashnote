@@ -39,3 +39,4 @@ func (r *memoryRepo) SaveFingerprint(ctx context.Context, storeID uuid.UUID, fin
 	r.fingerprints[key] = true
 	return nil
 }
+

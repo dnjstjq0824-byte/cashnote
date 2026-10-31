@@ -94,3 +94,4 @@ class DataProvenanceBadge extends StatelessWidget {
     );
   }
 }
+

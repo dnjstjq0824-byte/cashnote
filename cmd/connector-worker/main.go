@@ -39,3 +39,4 @@ func main() {
 	time.Sleep(500 * time.Millisecond)
 	log.Println("Connector worker stopped.")
 }
+

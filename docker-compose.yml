@@ -79,3 +79,4 @@ volumes:
   redisdata:
   miniodata:
   opensearchdata:
+

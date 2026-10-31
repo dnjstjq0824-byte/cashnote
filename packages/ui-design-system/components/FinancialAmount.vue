@@ -87,3 +87,4 @@ const formattedValue = computed(() => {
   return new Intl.NumberFormat('ko-KR').format(num)
 })
 </script>
+

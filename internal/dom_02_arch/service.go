@@ -136,3 +136,4 @@ func (s *serviceImpl) CalculateSampleFinancials(ctx context.Context, salesAmount
 	netPayout := salesAmount.Sub(fee)
 	return fee, netPayout, nil
 }
+

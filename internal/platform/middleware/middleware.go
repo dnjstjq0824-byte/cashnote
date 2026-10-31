@@ -119,3 +119,4 @@ func GetBusinessID(ctx context.Context) (uuid.UUID, bool) {
 	val, ok := ctx.Value(BusinessIdKey).(uuid.UUID)
 	return val, ok
 }
+

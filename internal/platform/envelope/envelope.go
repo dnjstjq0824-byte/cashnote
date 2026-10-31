@@ -80,3 +80,4 @@ func WriteError(w http.ResponseWriter, r *http.Request, status int, errPayload a
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(resp)
 }
+

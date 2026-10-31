@@ -25,21 +25,21 @@ const (
 
 // DeliverySettlementRecord represents parsed 11 core financial attributes
 type DeliverySettlementRecord struct {
-	ID                     uuid.UUID                `json:"id"`
-	StoreID                uuid.UUID                `json:"store_id"`
-	Platform               DeliveryPlatform         `json:"platform"`
-	SettlementDate         time.Time                `json:"settlement_date"`
-	GrossOrderAmount       decimal.Decimal          `json:"gross_order_amount"`       // 주문금액 합계
-	CanceledOrderAmount    decimal.Decimal          `json:"canceled_order_amount"`    // 취소금액
-	PlatformMediationFee   decimal.Decimal          `json:"platform_mediation_fee"`   // 중개수수료
-	DeliveryAgencyFee      decimal.Decimal          `json:"delivery_agency_fee"`      // 배달비(사장님부담)
-	PaymentGatewayFee      decimal.Decimal          `json:"payment_gateway_fee"`      // 결제수수료
-	MerchantCouponCost     decimal.Decimal          `json:"merchant_coupon_cost"`     // 사장님부담 할인쿠폰
-	AdProductDeduction     decimal.Decimal          `json:"ad_product_deduction"`     // 광고비 차감
-	VatOnFees              decimal.Decimal          `json:"vat_on_fees"`              // 수수료 부가세
-	NetSettledAmount       decimal.Decimal          `json:"net_settled_amount"`       // 실 입금 예정액
-	SourceLevel            envelope.ProvenanceLevel `json:"source_level"`             // LEVEL_2_FILE
-	BankReconciled         bool                     `json:"bank_reconciled"`
+	ID                   uuid.UUID                `json:"id"`
+	StoreID              uuid.UUID                `json:"store_id"`
+	Platform             DeliveryPlatform         `json:"platform"`
+	SettlementDate       time.Time                `json:"settlement_date"`
+	GrossOrderAmount     decimal.Decimal          `json:"gross_order_amount"`     // 주문금액 합계
+	CanceledOrderAmount  decimal.Decimal          `json:"canceled_order_amount"`  // 취소금액
+	PlatformMediationFee decimal.Decimal          `json:"platform_mediation_fee"` // 중개수수료
+	DeliveryAgencyFee    decimal.Decimal          `json:"delivery_agency_fee"`    // 배달비(사장님부담)
+	PaymentGatewayFee    decimal.Decimal          `json:"payment_gateway_fee"`    // 결제수수료
+	MerchantCouponCost   decimal.Decimal          `json:"merchant_coupon_cost"`   // 사장님부담 할인쿠폰
+	AdProductDeduction   decimal.Decimal          `json:"ad_product_deduction"`   // 광고비 차감
+	VatOnFees            decimal.Decimal          `json:"vat_on_fees"`            // 수수료 부가세
+	NetSettledAmount     decimal.Decimal          `json:"net_settled_amount"`     // 실 입금 예정액
+	SourceLevel          envelope.ProvenanceLevel `json:"source_level"`           // LEVEL_2_FILE
+	BankReconciled       bool                     `json:"bank_reconciled"`
 }
 
 // ParseDeliverySettlementCSV parses official settlement CSV files downloaded by merchants

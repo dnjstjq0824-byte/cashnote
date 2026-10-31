@@ -19,3 +19,4 @@ class BNColors {
   static const Color textMain = Color(0xFF0F172A);
   static const Color textMuted = Color(0xFF64748B);
 }
+

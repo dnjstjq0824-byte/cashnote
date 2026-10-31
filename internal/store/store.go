@@ -185,3 +185,4 @@ func (s *serviceImpl) CheckPermission(ctx context.Context, storeID, userID uuid.
 
 	return false, apperr.NewForbidden("이 작업을 수행할 수 있는 권한 등급이 부족합니다.")
 }
+

@@ -44,3 +44,4 @@ func HandleListCapabilities(svc Service) http.HandlerFunc {
 		})
 	}
 }
+
