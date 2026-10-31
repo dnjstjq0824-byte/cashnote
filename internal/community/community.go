@@ -84,3 +84,4 @@ func (s *serviceImpl) ListPosts(ctx context.Context, category *PostCategory) ([]
 	}
 	return result, nil
 }
+

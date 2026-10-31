@@ -200,3 +200,4 @@ func (s *serviceImpl) CreateCampaign(ctx context.Context, storeID uuid.UUID, nam
 	s.campaigns[storeID] = append(s.campaigns[storeID], campaign)
 	return campaign, nil
 }
+

@@ -89,3 +89,4 @@ function copyAiDraft() {
   alert('AI 답글 초안이 클립보드에 복사되었습니다. 배민 사장님 사이트에 붙여넣으세요.')
 }
 </script>
+

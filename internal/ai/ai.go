@@ -99,3 +99,4 @@ func (s *serviceImpl) GenerateForecast(ctx context.Context, storeID uuid.UUID, h
 		DisclaimerMemo:        "본 예측치는 최근 영업 패턴에 기반한 참고치이며, 금융기관 여신심사용 신용등급이 아니며 실제 통장 입금액과 혼동되어서는 안 됩니다.",
 	}, nil
 }
+

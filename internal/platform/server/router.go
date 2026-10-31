@@ -461,6 +461,173 @@ func NewRouter() http.Handler {
 				})
 			})
 
+			// Chart of Accounts (COA)
+			storeRouter.Get("/ledger/accounts", func(w http.ResponseWriter, r *http.Request) {
+				coa := ledgerSvc.GetChartOfAccounts()
+				envelope.WriteJSON(w, r, http.StatusOK, coa, &envelope.Meta{TotalCount: int64(len(coa))}, &envelope.DataProvenance{
+					SourceLevel: envelope.Level3API,
+					Verified:    true,
+					UpdatedAt:   time.Now().UTC(),
+				})
+			})
+
+			// Trial Balance (합계잔액시산표)
+			storeRouter.Get("/ledger/trial-balance", func(w http.ResponseWriter, r *http.Request) {
+				storeID, _ := uuid.Parse(chi.URLParam(r, "storeId"))
+				tb, err := ledgerSvc.GetTrialBalance(r.Context(), storeID, time.Time{})
+				if err != nil {
+					envelope.WriteError(w, r, http.StatusInternalServerError, apperr.NewInternal(err).ToProblemDetails(r.URL.Path))
+					return
+				}
+				envelope.WriteJSON(w, r, http.StatusOK, tb, nil, &envelope.DataProvenance{
+					SourceLevel: envelope.Level4Reconciled,
+					Verified:    true,
+					UpdatedAt:   time.Now().UTC(),
+				})
+			})
+
+			// General Ledger (총계정원장)
+			storeRouter.Get("/ledger/general-ledger", func(w http.ResponseWriter, r *http.Request) {
+				storeID, _ := uuid.Parse(chi.URLParam(r, "storeId"))
+				accCode := r.URL.Query().Get("account_code")
+				if accCode == "" {
+					accCode = "1010" // Default 보통예금
+				}
+				gl, err := ledgerSvc.GetGeneralLedger(r.Context(), storeID, accCode, time.Time{}, time.Time{})
+				if err != nil {
+					if appErr, ok := err.(*apperr.AppError); ok {
+						envelope.WriteError(w, r, appErr.HTTPStatus, appErr.ToProblemDetails(r.URL.Path))
+						return
+					}
+					envelope.WriteError(w, r, http.StatusInternalServerError, apperr.NewInternal(err).ToProblemDetails(r.URL.Path))
+					return
+				}
+				envelope.WriteJSON(w, r, http.StatusOK, gl, nil, &envelope.DataProvenance{
+					SourceLevel: envelope.Level4Reconciled,
+					Verified:    true,
+					UpdatedAt:   time.Now().UTC(),
+				})
+			})
+
+			// Close Accounting Period
+			storeRouter.Post("/ledger/periods/close", func(w http.ResponseWriter, r *http.Request) {
+				storeID, _ := uuid.Parse(chi.URLParam(r, "storeId"))
+				var req struct {
+					Year  int `json:"year"`
+					Month int `json:"month"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+					envelope.WriteError(w, r, http.StatusBadRequest, apperr.NewBadRequest("요청 형식이 올바르지 않습니다.").ToProblemDetails(r.URL.Path))
+					return
+				}
+				p, err := ledgerSvc.ClosePeriod(r.Context(), storeID, req.Year, req.Month, uuid.New())
+				if err != nil {
+					if appErr, ok := err.(*apperr.AppError); ok {
+						envelope.WriteError(w, r, appErr.HTTPStatus, appErr.ToProblemDetails(r.URL.Path))
+						return
+					}
+					envelope.WriteError(w, r, http.StatusInternalServerError, apperr.NewInternal(err).ToProblemDetails(r.URL.Path))
+					return
+				}
+				envelope.WriteJSON(w, r, http.StatusOK, p, nil, &envelope.DataProvenance{
+					SourceLevel: envelope.Level1Manual,
+					Verified:    true,
+					UpdatedAt:   p.CreatedAt,
+				})
+			})
+
+			// Level 1 Manual Expense Recording
+			storeRouter.Post("/ledger/manual-expense", func(w http.ResponseWriter, r *http.Request) {
+				storeID, _ := uuid.Parse(chi.URLParam(r, "storeId"))
+				var req ledger.ManualExpenseInput
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+					envelope.WriteError(w, r, http.StatusBadRequest, apperr.NewBadRequest("요청 형식이 올바르지 않습니다.").ToProblemDetails(r.URL.Path))
+					return
+				}
+				if req.ExpenseDate.IsZero() {
+					req.ExpenseDate = time.Now()
+				}
+				entry, err := ledgerSvc.PostManualExpense(r.Context(), storeID, req)
+				if err != nil {
+					if appErr, ok := err.(*apperr.AppError); ok {
+						envelope.WriteError(w, r, appErr.HTTPStatus, appErr.ToProblemDetails(r.URL.Path))
+						return
+					}
+					envelope.WriteError(w, r, http.StatusBadRequest, apperr.NewBadRequest(err.Error()).ToProblemDetails(r.URL.Path))
+					return
+				}
+				envelope.WriteJSON(w, r, http.StatusCreated, entry, nil, &envelope.DataProvenance{
+					SourceLevel: envelope.Level1Manual,
+					Verified:    true,
+					UpdatedAt:   entry.CreatedAt,
+				})
+			})
+
+			// Level 1 Manual Revenue Recording
+			storeRouter.Post("/ledger/manual-revenue", func(w http.ResponseWriter, r *http.Request) {
+				storeID, _ := uuid.Parse(chi.URLParam(r, "storeId"))
+				var req ledger.ManualRevenueInput
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+					envelope.WriteError(w, r, http.StatusBadRequest, apperr.NewBadRequest("요청 형식이 올바르지 않습니다.").ToProblemDetails(r.URL.Path))
+					return
+				}
+				if req.RevenueDate.IsZero() {
+					req.RevenueDate = time.Now()
+				}
+				entry, err := ledgerSvc.PostManualRevenue(r.Context(), storeID, req)
+				if err != nil {
+					if appErr, ok := err.(*apperr.AppError); ok {
+						envelope.WriteError(w, r, appErr.HTTPStatus, appErr.ToProblemDetails(r.URL.Path))
+						return
+					}
+					envelope.WriteError(w, r, http.StatusBadRequest, apperr.NewBadRequest(err.Error()).ToProblemDetails(r.URL.Path))
+					return
+				}
+				envelope.WriteJSON(w, r, http.StatusCreated, entry, nil, &envelope.DataProvenance{
+					SourceLevel: envelope.Level1Manual,
+					Verified:    true,
+					UpdatedAt:   entry.CreatedAt,
+				})
+			})
+
+			// Vendors Management
+			storeRouter.Get("/expenses/vendors", func(w http.ResponseWriter, r *http.Request) {
+				storeID, _ := uuid.Parse(chi.URLParam(r, "storeId"))
+				vendors, err := expenseSvc.ListVendors(r.Context(), storeID)
+				if err != nil {
+					envelope.WriteError(w, r, http.StatusInternalServerError, apperr.NewInternal(err).ToProblemDetails(r.URL.Path))
+					return
+				}
+				envelope.WriteJSON(w, r, http.StatusOK, vendors, &envelope.Meta{TotalCount: int64(len(vendors))}, &envelope.DataProvenance{
+					SourceLevel: envelope.Level1Manual,
+					Verified:    true,
+					UpdatedAt:   time.Now().UTC(),
+				})
+			})
+
+			storeRouter.Post("/expenses/vendors", func(w http.ResponseWriter, r *http.Request) {
+				storeID, _ := uuid.Parse(chi.URLParam(r, "storeId"))
+				var req expense.Vendor
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+					envelope.WriteError(w, r, http.StatusBadRequest, apperr.NewBadRequest("요청 형식이 올바르지 않습니다.").ToProblemDetails(r.URL.Path))
+					return
+				}
+				req.StoreID = storeID
+				if err := expenseSvc.CreateVendor(r.Context(), &req); err != nil {
+					if appErr, ok := err.(*apperr.AppError); ok {
+						envelope.WriteError(w, r, appErr.HTTPStatus, appErr.ToProblemDetails(r.URL.Path))
+						return
+					}
+					envelope.WriteError(w, r, http.StatusBadRequest, apperr.NewBadRequest(err.Error()).ToProblemDetails(r.URL.Path))
+					return
+				}
+				envelope.WriteJSON(w, r, http.StatusCreated, req, nil, &envelope.DataProvenance{
+					SourceLevel: envelope.Level1Manual,
+					Verified:    true,
+					UpdatedAt:   req.CreatedAt,
+				})
+			})
+
 			// Tax VAT Estimate
 			storeRouter.Get("/tax/vat-estimate", func(w http.ResponseWriter, r *http.Request) {
 				storeID, _ := uuid.Parse(chi.URLParam(r, "storeId"))
@@ -816,3 +983,4 @@ func NewRouter() http.Handler {
 
 	return r
 }
+

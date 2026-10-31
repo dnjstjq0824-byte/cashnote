@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -18,13 +19,13 @@ func main() {
 		port = "8080"
 	}
 
-	handler := server.NewRouter()
+	router := server.NewRouter()
 
 	srv := &http.Server{
-		Addr:         ":" + port,
-		Handler:      handler,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
+		Addr:         fmt.Sprintf(":%s", port),
+		Handler:      router,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 60 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
 
@@ -44,7 +45,8 @@ func main() {
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatalf("Server forced shutdown: %v", err)
+		log.Fatalf("Server forced to shutdown: %v", err)
 	}
-	log.Println("API server stopped.")
+
+	log.Println("BN Merchant OS API Server exited.")
 }

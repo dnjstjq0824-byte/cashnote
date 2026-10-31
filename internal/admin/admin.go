@@ -103,3 +103,4 @@ func (s *serviceImpl) VerifySystemIntegrity(ctx context.Context, allEntries []*l
 		Verdict:                    verdict,
 	}, nil
 }
+

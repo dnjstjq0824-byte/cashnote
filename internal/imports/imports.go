@@ -116,3 +116,4 @@ func (s *serviceImpl) ListBatches(ctx context.Context, storeID uuid.UUID) ([]*Im
 	defer s.mu.RUnlock()
 	return s.batches[storeID], nil
 }
+

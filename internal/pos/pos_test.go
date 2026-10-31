@@ -67,3 +67,4 @@ func TestPosService(t *testing.T) {
 		}
 	})
 }
+

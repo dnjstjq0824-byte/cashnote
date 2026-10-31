@@ -104,3 +104,4 @@
 <script setup lang="ts">
 import DataProvenanceBadge from '../../../packages/ui-design-system/components/DataProvenanceBadge.vue'
 </script>
+

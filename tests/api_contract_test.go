@@ -351,4 +351,73 @@ func TestMasterAPIContractSuite(t *testing.T) {
 			t.Fatalf("partner webhook failed: %d", rec.Code)
 		}
 	})
+
+	t.Run("17. Phase 2 Level 1 Manual Accounting, Trial Balance & Period Closing", func(t *testing.T) {
+		// 1. Chart of Accounts
+		req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/v1/stores/%s/ledger/accounts", storeID), nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("get accounts failed: %d", rec.Code)
+		}
+
+		// 2. Create Vendor
+		vendorJSON := `{"trade_name":"(주)에스프레소원두","business_number":"123-45-67890","category":"원두유통","representative":"이원두"}`
+		req = httptest.NewRequest(http.MethodPost, fmt.Sprintf("/v1/stores/%s/expenses/vendors", storeID), bytes.NewReader([]byte(vendorJSON)))
+		rec = httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("create vendor failed: %d, body: %s", rec.Code, rec.Body.String())
+		}
+
+		// 3. Post Manual Expense (Level 1)
+		expJSON := `{"expense_date":"2026-02-01T10:00:00Z","account_code":"5010","payment_method":"BANK","supply_amount":"150000","vat_amount":"15000","vendor_name":"(주)에스프레소원두","description":"원두 5kg 매입"}`
+		req = httptest.NewRequest(http.MethodPost, fmt.Sprintf("/v1/stores/%s/ledger/manual-expense", storeID), bytes.NewReader([]byte(expJSON)))
+		rec = httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("manual expense failed: %d, body: %s", rec.Code, rec.Body.String())
+		}
+
+		// 4. Post Manual Revenue (Level 1)
+		revJSON := `{"revenue_date":"2026-02-01T12:00:00Z","channel":"STORE","payment_method":"BANK","supply_amount":"300000","vat_amount":"30000","description":"오후 홀 매출"}`
+		req = httptest.NewRequest(http.MethodPost, fmt.Sprintf("/v1/stores/%s/ledger/manual-revenue", storeID), bytes.NewReader([]byte(revJSON)))
+		rec = httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("manual revenue failed: %d, body: %s", rec.Code, rec.Body.String())
+		}
+
+		// 5. Get Trial Balance
+		req = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/v1/stores/%s/ledger/trial-balance", storeID), nil)
+		rec = httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("get trial balance failed: %d, body: %s", rec.Code, rec.Body.String())
+		}
+
+		var tbResp envelope.Response
+		_ = json.Unmarshal(rec.Body.Bytes(), &tbResp)
+		tbMap := tbResp.Data.(map[string]any)
+		if tbMap["is_balanced"] != true {
+			t.Fatalf("trial balance must be balanced: %v", tbMap)
+		}
+
+		// 6. Get General Ledger for 1010 (보통예금)
+		req = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/v1/stores/%s/ledger/general-ledger?account_code=1010", storeID), nil)
+		rec = httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("get general ledger failed: %d, body: %s", rec.Code, rec.Body.String())
+		}
+
+		// 7. Close Accounting Period (2026년 1월 마감)
+		closeJSON := `{"year":2026,"month":1}`
+		req = httptest.NewRequest(http.MethodPost, fmt.Sprintf("/v1/stores/%s/ledger/periods/close", storeID), bytes.NewReader([]byte(closeJSON)))
+		rec = httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("close period failed: %d, body: %s", rec.Code, rec.Body.String())
+		}
+	})
 }

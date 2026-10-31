@@ -28,3 +28,4 @@ func TestCommunityService(t *testing.T) {
 		}
 	})
 }
+

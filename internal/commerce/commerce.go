@@ -192,7 +192,7 @@ func (s *serviceImpl) CreateMarketplaceOrder(ctx context.Context, storeID uuid.U
 		}
 
 		var err error
-		entry, err = s.ledgerSvc.PostJournalEntry(ctx, storeID, now, fmt.Sprintf("B2B 마켓 주문 자동 분개 (%s)", order.ID.String()[:8]), lines)
+		entry, err = s.ledgerSvc.PostJournalEntry(ctx, storeID, now, fmt.Sprintf("B2B 마켓 주문 자동 분개 (%s)", order.ID.String()[:8]), "LEVEL_3_API", lines)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -200,3 +200,4 @@ func (s *serviceImpl) CreateMarketplaceOrder(ctx context.Context, storeID uuid.U
 
 	return order, entry, nil
 }
+

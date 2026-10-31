@@ -2,6 +2,7 @@ package expense
 
 import (
 	"context"
+	"regexp"
 	"sync"
 	"time"
 
@@ -27,16 +28,30 @@ const (
 type ProofType string
 
 const (
-	ProofTaxInvoice  ProofType = "TAX_INVOICE"   // 전자세금계산서
-	ProofCashReceipt ProofType = "CASH_RECEIPT"  // 지출증빙용 현금영수증
-	ProofCreditCard  ProofType = "CREDIT_CARD"   // 사업용 신용카드
-	ProofSimple      ProofType = "SIMPLE_RECEIPT"// 간이영수증 (3만원 한도)
+	ProofTaxInvoice  ProofType = "TAX_INVOICE"    // 전자세금계산서
+	ProofCashReceipt ProofType = "CASH_RECEIPT"   // 지출증빙용 현금영수증
+	ProofCreditCard  ProofType = "CREDIT_CARD"    // 사업용 신용카드
+	ProofSimple      ProofType = "SIMPLE_RECEIPT" // 간이영수증 (3만원 한도)
 )
+
+// Vendor represents a business partner/supplier
+type Vendor struct {
+	ID             uuid.UUID `json:"id"`
+	StoreID        uuid.UUID `json:"store_id"`
+	BusinessNumber string    `json:"business_number"` // 10-digit BRN
+	TradeName      string    `json:"trade_name"`      // 상호명
+	Representative string    `json:"representative"`  // 대표자명
+	Category       string    `json:"category"`        // 업태/종목 (식자재, 임대인, 세무사 등)
+	Phone          string    `json:"phone"`
+	Memo           string    `json:"memo"`
+	CreatedAt      time.Time `json:"created_at"`
+}
 
 // Expense represents single business expense item
 type Expense struct {
 	ID            uuid.UUID       `json:"id"`
 	StoreID       uuid.UUID       `json:"store_id"`
+	VendorID      *uuid.UUID      `json:"vendor_id,omitempty"`
 	ExpenseDate   time.Time       `json:"expense_date"`
 	CategoryCode  CategoryCode    `json:"category_code"`
 	VendorName    string          `json:"vendor_name"`
@@ -46,24 +61,30 @@ type Expense struct {
 	PaymentMethod string          `json:"payment_method"` // BANK_TRANSFER, CARD, CASH
 	ProofType     ProofType       `json:"proof_type"`
 	Memo          string          `json:"memo"`
+	SourceLevel   string          `json:"source_level"` // LEVEL_1_MANUAL, LEVEL_2_FILE, LEVEL_3_API
 	CreatedAt     time.Time       `json:"created_at"`
 }
 
-// Service manages expenses
+// Service manages expenses and vendors
 type Service interface {
 	CreateExpense(ctx context.Context, exp *Expense) error
 	ListExpenses(ctx context.Context, storeID uuid.UUID, fromDate, toDate time.Time, category *CategoryCode) ([]*Expense, error)
 	GetExpenseSummary(ctx context.Context, storeID uuid.UUID, fromDate, toDate time.Time) (decimal.Decimal, decimal.Decimal, error)
+	CreateVendor(ctx context.Context, v *Vendor) error
+	ListVendors(ctx context.Context, storeID uuid.UUID) ([]*Vendor, error)
+	GetVendor(ctx context.Context, storeID, vendorID uuid.UUID) (*Vendor, error)
 }
 
 type serviceImpl struct {
 	mu       sync.RWMutex
 	expenses map[uuid.UUID][]*Expense
+	vendors  map[uuid.UUID][]*Vendor
 }
 
 func NewService() Service {
 	return &serviceImpl{
 		expenses: make(map[uuid.UUID][]*Expense),
+		vendors:  make(map[uuid.UUID][]*Vendor),
 	}
 }
 
@@ -77,6 +98,10 @@ func (s *serviceImpl) CreateExpense(ctx context.Context, exp *Expense) error {
 
 	if exp.SupplyAmount.IsNegative() || exp.VatAmount.IsNegative() {
 		return apperr.NewBadRequest("비용 금액은 0 이상이어야 합니다.")
+	}
+
+	if exp.SourceLevel == "" {
+		exp.SourceLevel = "LEVEL_1_MANUAL"
 	}
 
 	exp.TotalAmount = exp.SupplyAmount.Add(exp.VatAmount)
@@ -113,10 +138,11 @@ func (s *serviceImpl) GetExpenseSummary(ctx context.Context, storeID uuid.UUID, 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	fixedTotal := decimal.Zero
-	variableTotal := decimal.Zero
+	items := s.expenses[storeID]
+	fixed := decimal.Zero
+	variable := decimal.Zero
 
-	for _, exp := range s.expenses[storeID] {
+	for _, exp := range items {
 		if !fromDate.IsZero() && exp.ExpenseDate.Before(fromDate) {
 			continue
 		}
@@ -126,11 +152,54 @@ func (s *serviceImpl) GetExpenseSummary(ctx context.Context, storeID uuid.UUID, 
 
 		switch exp.CategoryCode {
 		case CategoryFixedRent, CategoryFixedLabor, CategoryUtility:
-			fixedTotal = fixedTotal.Add(exp.TotalAmount)
-		default:
-			variableTotal = variableTotal.Add(exp.TotalAmount)
+			fixed = fixed.Add(exp.TotalAmount)
+		case CategoryVariableIngredient, CategoryVariablePackaging, CategoryOther:
+			variable = variable.Add(exp.TotalAmount)
 		}
 	}
 
-	return fixedTotal, variableTotal, nil
+	return fixed, variable, nil
+}
+
+var brnRegex = regexp.MustCompile(`^[0-9]{10}$`)
+
+func (s *serviceImpl) CreateVendor(ctx context.Context, v *Vendor) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if v.TradeName == "" {
+		return apperr.NewBadRequest("상호명은 필수 입력 항목입니다.")
+	}
+
+	cleanBRN := regexp.MustCompile(`[^0-9]`).ReplaceAllString(v.BusinessNumber, "")
+	if cleanBRN != "" && !brnRegex.MatchString(cleanBRN) {
+		return apperr.NewBadRequest("사업자등록번호는 10자리 숫자여야 합니다.")
+	}
+	v.BusinessNumber = cleanBRN
+
+	if v.ID == uuid.Nil {
+		v.ID = uuid.New()
+	}
+	v.CreatedAt = time.Now().UTC()
+
+	s.vendors[v.StoreID] = append(s.vendors[v.StoreID], v)
+	return nil
+}
+
+func (s *serviceImpl) ListVendors(ctx context.Context, storeID uuid.UUID) ([]*Vendor, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.vendors[storeID], nil
+}
+
+func (s *serviceImpl) GetVendor(ctx context.Context, storeID, vendorID uuid.UUID) (*Vendor, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	for _, v := range s.vendors[storeID] {
+		if v.ID == vendorID {
+			return v, nil
+		}
+	}
+	return nil, apperr.NewNotFound("거래처")
 }

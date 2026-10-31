@@ -149,3 +149,4 @@ func (s *serviceImpl) EstimateVat(ctx context.Context, storeID uuid.UUID, taxTyp
 		RecommendationMemo:         memo,
 	}, nil
 }
+

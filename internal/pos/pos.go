@@ -126,7 +126,7 @@ func (s *serviceImpl) IngestPosEvent(ctx context.Context, storeID uuid.UUID, eve
 			},
 		}
 
-		entry, err := s.ledgerSvc.PostJournalEntry(ctx, storeID, event.OrderTime, fmt.Sprintf("POS 주문 자동기장 (%s)", event.PosOrderNumber), lines)
+		entry, err := s.ledgerSvc.PostJournalEntry(ctx, storeID, event.OrderTime, fmt.Sprintf("POS 주문 자동기장 (%s)", event.PosOrderNumber), "LEVEL_3_API", lines)
 		if err != nil {
 			return nil, err
 		}
@@ -141,3 +141,4 @@ func (s *serviceImpl) ListEvents(ctx context.Context, storeID uuid.UUID) ([]*Pos
 	defer s.mu.RUnlock()
 	return s.events[storeID], nil
 }
+
