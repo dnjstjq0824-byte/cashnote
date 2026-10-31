@@ -309,7 +309,7 @@ function fetchGeneralLedger() {
 }
 
 function closePeriod() {
-  periodStatusMsg = `✓ [LOCKED] ${closeYear.value}년 ${closeMonth.value}월 회계기간 마감이 완료되었습니다. 신규 전표 등록이 동결됩니다.`;
+  periodStatusMsg.value = `✓ [LOCKED] ${closeYear.value}년 ${closeMonth.value}월 회계기간 마감이 완료되었습니다. 신규 전표 등록이 동결됩니다.`;
 }
 
 function submitManualEntry() {
